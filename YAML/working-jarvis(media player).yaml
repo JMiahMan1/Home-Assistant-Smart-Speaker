@@ -1,7 +1,7 @@
 substitutions:
   name: smart-speaker
   friendly_name: smart-speaker
-  api_key: "8HRKxpjzuLa3DTYrMbtt0/CEn6Qt/ctZUSvMVX0Sg3E="
+  api_key: "replaceme"
 
 ## Network ##
   ip: 192.168.1.210
