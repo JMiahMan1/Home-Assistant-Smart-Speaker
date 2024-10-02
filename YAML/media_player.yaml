@@ -115,7 +115,7 @@ wifi:
 
   ap:
     ssid: ${name}
-    password: s3box123
+    password: esp32123
   on_connect:
     - lambda: |-
         id(wifi_connection) = true;
@@ -209,9 +209,22 @@ select:
             - script.execute: control_led
 script:
   - id: set_volume
+    mode: restart
+    parameters:
+      volume: float
     then:
       - media_player.volume_set:
-          volume: !lambda return 0.5 + id(speaker_volume) * 0.05 ;
+          id: adf_media_player
+          volume: !lambda return clamp(id(adf_media_player).volume+volume, 0.0f, 1.0f);
+
+  - id: show_volume
+    mode: restart
+    then:
+      - light.turn_on:
+          id: middle_led
+          effect: show_volume
+      - delay: 1s
+      - script.execute: control_led
 
   - id: control_led
     then:
@@ -269,7 +282,7 @@ script:
           green: 100%
           effect: "Fast Pulse"
       - light.turn_on:
-          id: led_bar
+          id: middle_led
           blue: 0%
           red: 0%
           green: 100%
@@ -282,7 +295,7 @@ script:
       - light.turn_off:
           id: led
       - light.turn_off:
-          id: led_bar
+          id: middle_led
 
   # Script executed when the voice assistant is idle (waiting for a wake word): In this example: Turn the LED in white with 20% of brightness ⚪
   - id: control_led_voice_assist_idle_phase
@@ -295,7 +308,7 @@ script:
           brightness: 20%
           effect: "none"
       - light.turn_on:
-          id: led_bar
+          id: middle_led
           blue: 100%
           red: 100%
           green: 100%
@@ -313,7 +326,7 @@ script:
           green: 0%
           effect: "Slow Pulse"
       - light.turn_on:
-          id: led_bar
+          id: middle_led
           blue: 100%
           red: 0%
           green: 0%
@@ -330,7 +343,7 @@ script:
           green: 0%
           effect: "Fast Pulse"
       - light.turn_on:
-          id: led_bar
+          id: middle_led
           blue: 100%
           red: 0%
           green: 0%
@@ -506,6 +519,20 @@ light:
     id: led_bar
     icon: mdi:led-on
     default_transition_length: 0s
+  - platform: partition
+    id: start_led
+    segments:
+      - id: led_bar
+        from: 0
+        to: 0
+    default_transition_length: 100ms
+  - platform: partition
+    id: middle_led
+    segments:
+      - id: led_bar
+        from: 1
+        to: 6
+    default_transition_length: 100ms
     effects:
       - pulse:
           name: "Slow Pulse"
@@ -529,6 +556,70 @@ light:
           max_brightness: 35%
           transition_length: 3s      # defaults to 1s
           update_interval: 3s
+      - addressable_lambda:
+          name: show_volume
+          update_interval: 50ms
+          lambda: |-
+            int int_volume = int(id(adf_media_player).volume * 100.0f * it.size());
+            int full_leds = int_volume / 100;
+            int last_brightness = int_volume % 100;
+            int i = 0;
+            for(; i < full_leds; i++) {
+              it[i] = Color::WHITE;
+            }
+            if(i < 4) {
+              it[i++] = Color(64, 64, 64).fade_to_white(last_brightness*256/100);
+            }
+            for(; i < it.size(); i++) {
+              it[i] = Color(64, 64, 64);
+            }
+  - platform: partition
+    id: end_led
+    segments:
+      - id: led_bar
+        from: 7
+        to: 7
+    default_transition_length: 100ms
+    effects:
+      - pulse:
+          name: "Slow Pulse"
+          transition_length: 250ms
+          update_interval: 250ms
+          min_brightness: 60%
+          max_brightness: 80%
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 100ms
+          update_interval: 100ms
+          min_brightness: 60%
+          max_brightness: 80%
+      - addressable_scan:
+          name: "Scanning"
+          move_interval: 70ms
+          scan_width: 1
+      - pulse:
+          name: "Waiting for wake word"
+          min_brightness:  15%
+          max_brightness: 35%
+          transition_length: 3s      # defaults to 1s
+          update_interval: 3s
+      - addressable_lambda:
+          name: show_volume
+          update_interval: 50ms
+          lambda: |-
+            int int_volume = int(id(adf_media_player).volume * 100.0f * it.size());
+            int full_leds = int_volume / 100;
+            int last_brightness = int_volume % 100;
+            int i = 0;
+            for(; i < full_leds; i++) {
+              it[i] = Color::WHITE;
+            }
+            if(i < 4) {
+              it[i++] = Color(64, 64, 64).fade_to_white(last_brightness*256/100);
+            }
+            for(; i < it.size(); i++) {
+              it[i] = Color(64, 64, 64);
+            }
 
 sensor:
 
@@ -586,6 +677,17 @@ media_player:
       - self
       - resampler
       - adf_i2s_out
+    on_state:
+      then:
+        - lambda: |-
+            static float old_volume = -1;
+            float new_volume = id(adf_media_player).volume;
+            if(abs(new_volume-old_volume) > 0.0001) {
+              if(old_volume != -1) {
+                id(show_volume)->execute();
+              }
+            }
+            old_volume = new_volume;
 
 microphone:
   - platform: adf_pipeline
