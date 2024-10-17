@@ -8,3 +8,12 @@ In the search for an "easy" Voice Assistant I ran across a lot of different impl
 - schem (folder) - Contains a png wiring schematic for those who like a visual representation. This was taken from the aforementioned blog and edited.
 - YAML (folder) - This contains the current working yaml for ESPHome in Home Assistant
 - 3D Print - This contains the stl files to 3D print a box to place the components in. Currently, it is based on a remix (https://www.printables.com/model/982104-esp32-s3-esphome-voice-assistant-with-local-wake-w) of the original (https://www.printables.com/model/967157-esp32-s3-esphome-voice-assistant-with-local-wake-w) my plan is to not leave these unedited for long and make assembly more intuitive. 
+
+# Parts list (Amazon - US)
+
+- ESP32 Boards - [https://www.amazon.com/gp/product/B0C9H7Y66W](https://www.amazon.com/gp/product/B0C9H7Y66W?th=1)
+- Omni directional Microphone (INMP441) - [https://www.amazon.com/gp/product/B09X3216DN](https://www.amazon.com/gp/product/B09X3216DN)
+- Amplifier (MAX98357 3W) - [https://www.amazon.com/gp/product/B0CDWXZZCH](https://www.amazon.com/gp/product/B0CDWXZZCH)
+- Speaker (Dayton Audio DMA45-4 1-1/2") - [https://www.amazon.com/gp/product/B07N1YW3SV](https://www.amazon.com/gp/product/B07N1YW3SV)
+- Light Bar (Black WS2812B 5050 LED Light Stick) - [https://www.amazon.com/gp/product/B0D7CC469B](https://www.amazon.com/gp/product/B0D7CC469B)
+- USB-C Connector - [https://www.amazon.com/gp/product/B0D7CN4BTV/](https://www.amazon.com/gp/product/B0D7CN4BTV/)
