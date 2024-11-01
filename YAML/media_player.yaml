@@ -209,13 +209,9 @@ select:
             - script.execute: control_led
 script:
   - id: set_volume
-    mode: restart
-    parameters:
-      volume: float
     then:
       - media_player.volume_set:
-          id: adf_media_player
-          volume: !lambda return clamp(id(adf_media_player).volume+volume, 0.0f, 1.0f);
+          volume: !lambda return 0.5 + id(speaker_volume) * 0.05 ;
 
   - id: show_volume
     mode: restart
@@ -392,22 +388,27 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
+
   - id: api_connection
     type: bool
     restore_value: no
     initial_value: "false"
+
   - id: mute_value
     type: bool
     restore_value: no
     initial_value: "false"
+
   - id: speaker_volume
     type: int
     restore_value: no
     initial_value: '5'
+
   - id: voice_assistant_phase
     type: int
     restore_value: no
     initial_value: ${voice_assist_not_ready_phase_id}
+
   - id: init_in_progress
     type: bool
     restore_value: no
