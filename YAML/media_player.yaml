@@ -1,7 +1,7 @@
 substitutions:
   name: smart-speaker
   friendly_name: smart-speaker
-  api_key: "ReplaceMe"
+  api_key: !secret api_key
 
 ####################################################################
 #### change the micro wake word to be used on the line below   #####
@@ -90,6 +90,10 @@ esp32:
       CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: "y"
       CONFIG_ESP32S3_DATA_CACHE_64KB:      "y"
       CONFIG_ESP32S3_DATA_CACHE_LINE_64B:  "y"
+
+      # Fix for connection failures (TTS/Audio)
+      CONFIG_LWIP_MAX_SOCKETS: "32"
+      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
 psram:
   mode: quad
   speed: 80MHz
@@ -230,6 +234,26 @@ select:
             - delay: 500ms
             - micro_wake_word.start
             - script.execute: control_led
+
+  - platform: template
+    name: "Wake word sensitivity"
+    optimistic: true
+    initial_option: Moderately sensitive
+    restore_value: true
+    entity_category: config
+    options:
+      - Slightly sensitive
+      - Moderately sensitive
+      - Very sensitive
+    on_value:
+      lambda: |-
+        if (x == "Slightly sensitive") {
+          id(wake_word_model).set_probability_cutoff(247);
+        } else if (x == "Moderately sensitive") {
+          id(wake_word_model).set_probability_cutoff(235);
+        } else if (x == "Very sensitive") {
+          id(wake_word_model).set_probability_cutoff(212);
+        }
 script:
   - id: set_volume
     then:
@@ -324,14 +348,14 @@ script:
           blue: 100%
           red: 100%
           green: 100%
-          brightness: 20%
+          brightness: !lambda return id(led_brightness_global) * 0.3;
           effect: "none"
       - light.turn_on:
           id: middle_led
           blue: 100%
           red: 100%
           green: 100%
-          brightness: 20%
+          brightness: !lambda return id(led_brightness_global) * 0.3;
           effect: "Waiting for wake word"
 
 
@@ -377,7 +401,7 @@ script:
           blue: 100%
           red: 0%
           green: 0%
-          brightness: 100%
+          brightness: !lambda return id(led_brightness_global);
           effect: "none"
 
 
@@ -389,7 +413,7 @@ script:
           blue: 0%
           red: 100%
           green: 0%
-          brightness: 100%
+          brightness: !lambda return id(led_brightness_global);
           effect: "none"
 
 
@@ -436,6 +460,26 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'true'
+
+  - id: led_brightness_global
+    type: float
+    restore_value: yes
+    initial_value: '0.5'
+
+number:
+  - platform: template
+    name: "LED Brightness"
+    id: led_brightness
+    optimistic: true
+    min_value: 0.1
+    max_value: 1.0
+    step: 0.1
+    initial_value: 0.5
+    restore_value: true
+    entity_category: config
+    set_action:
+      - lambda: id(led_brightness_global) = x;
+      - script.execute: control_led
 
 button:
   - platform: restart
@@ -714,6 +758,7 @@ micro_wake_word:
   vad:
   models:
     - model: ${micro_wake_word_model}
+      id: wake_word_model
   on_wake_word_detected:
     - voice_assistant.start:
         wake_word: !lambda return wake_word;
@@ -726,6 +771,11 @@ voice_assistant:
   noise_suppression_level: 4
   auto_gain: 31dBFS
   volume_multiplier: 4.0
+  on_start:
+    - mixer_speaker.apply_ducking:
+        id: media_speaker_input
+        decibel_reduction: 20
+        duration: 0.2s
   on_client_connected:
     - lambda: id(init_in_progress) = false;
     - if:
@@ -761,6 +811,10 @@ voice_assistant:
           - micro_wake_word.start
     - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
     - script.execute: control_led
+    - mixer_speaker.apply_ducking:
+        id: media_speaker_input
+        decibel_reduction: 0
+        duration: 1.0s
   on_error:
     - if:
         condition:
