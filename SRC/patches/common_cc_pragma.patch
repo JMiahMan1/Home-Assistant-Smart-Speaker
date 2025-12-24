@@ -1,0 +1,8 @@
+--- /tmp/esp-tflite-micro-clean/tensorflow/lite/core/c/common.cc	2025-12-23 18:24:38.210303202 -0700
++++ my_components/esp-tflite-micro/tensorflow/lite/core/c/common.cc	2025-12-23 18:23:59.029845999 -0700
+@@ -1,3 +1,5 @@
++#pragma GCC diagnostic ignored "-Werror=switch"
++#pragma GCC diagnostic ignored "-Wswitch"
+ /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+ 
+ Licensed under the Apache License, Version 2.0 (the "License");
