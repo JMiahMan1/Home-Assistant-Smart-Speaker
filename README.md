@@ -1,63 +1,87 @@
-
 # Smart Speaker ESPHome Configuration
 
-## Overview
-This configuration is for an ESP32-S3 Smart Speaker, featuring:
-*   **Audio**: I2S Microphone (INMP441), I2S Speaker (MAX98357A)
-*   **Voice Assistant**: Micro Wake Word, Voice Assistant pipeline
-*   **LEDs**: WS2812 Status LED and WS2812 LED Bar
+ESP32-S3 smart speaker that works as both a Music Assistant player and a Home
+Assistant voice satellite.
 
-## Fix for LED Regression (ESP-IDF + Audio)
-**Problem:** Enabling audio components on ESP32-S3 with ESP-IDF consumes resources that leave only **one RMT TX channel** available. This prevents driving two separate LED strips using the standard RMT driver.
+* Audio in: INMP441 I2S microphone
+* Audio out: MAX98357A I2S amplifier
+* Wake word: micro_wake_word (Hey Jarvis)
+* LEDs: WS2812 status LED and WS2812 light bar
 
-**Solution:** A **Hybrid Driver Strategy** is used:
-1.  **Status LED Bar (GPIO16)**: Uses the standard `esp32_rmt_led_strip` with DMA (`use_dma: true`). This consumes the single available RMT channel.
-2.  **Status LED (GPIO48)**: Uses a custom **Bit-Bang Driver** (`single_ws2812`). This uses direct GPIO manipulation (zero RMT channels).
-
-## Development Workflow
-
-### Prerequisite: `setup.sh`
-This project relies on a custom `setup.sh` script to manage the complex build environment. **Do not run `esphome run` directly.**
-
-### 1. Initial Setup & Clean Build
-To set up the environment (virtualenv, components) and perform a clean build:
-```bash
-./setup.sh --clean && ./setup.sh
-```
-
-### 2. Standard Build
-To compile the firmware:
-```bash
-./setup.sh
-```
-
-### 3. Uploading to Device
-The script automatically handles the upload method based on the target:
-*   **OTA (Over-the-Air):** Uses `esphome upload` for standard network updates.
-*   **Serial (USB):** Uses `platformio run --target upload` for robust flashing over USB, bypassing build system conflicts.
+## Build
 
 ```bash
-# Upload via Network (OTA)
-./setup.sh --upload smart-speaker.lan
-
-# Upload via Serial (USB)
-./setup.sh --upload /dev/ttyACM0
+./setup.sh                                  # compile
+./setup.sh --upload smart-speaker.local     # compile + OTA
+./setup.sh --upload /dev/cu.usbmodem1434101 # compile + serial
+./setup.sh --clean                          # wipe venv and build artifacts
 ```
 
-## Why is this so complex?
-The complexity of this setup—custom scripts, surgical CMake injection, and two-pass builds—is the direct result of fixing a critical regression: **The Light Bar (LEDs) ceased to function when Audio/AI features were enabled.**
+The script creates a virtualenv, installs the pinned ESPHome version, and runs
+`esphome compile`. Nothing else is required.
 
-1.  **Resource Conflict (The Root Cause):** Empowering the ESP32-S3 with Voice Assistant capabilities (I2S Audio + Wakeword detection) consumed nearly all hardware RMT channels. This left insufficient resources for the standard LED drivers to control both the Status LED and the Light Bar, breaking the Light Bar.
-2.  **The Fix (Custom Drivers):** To solve this without sacrificing Audio/AI, we had to implement a hybrid driver strategy (Bit-Bang + DMA), forcing us to carefully manage how components are compiled and linked.
-3.  **Dependency Hell (The Consequence):** Bringing in these custom configurations while maintaining the delicate TFLite Micro + ESP-NN + ESP-DSP integration triggered a cascade of linker errors and missing symbols. The standard ESPHome build system could not handle this specific combination of custom drivers and AI libraries.
+### ESPHome version is pinned
 
-### The Solution: Surgical Build Control
-We ultimately had to take full control of the build process:
-*   **Custom CMake Injection:** We replace the generated `src/CMakeLists.txt` to properly handle the custom dependency graph.
-*   **Explicit Source Globbing:** We manually register TFLite/ESP-NN sources to prevent "undefined reference" errors that standard builds missed.
-*   **Two-Pass Build:** `setup.sh` orchestrates the generation and compilation phases separately to apply these patches reliably.
+`setup.sh` pins ESPHome to 2026.3.3. External I2S amplifiers on the ESP32-S3
+regressed when the legacy I2S driver was removed in 2026.4.0
+([esphome#16369](https://github.com/esphome/esphome/issues/16369), still open).
+Do not bump this without testing audio output.
 
-This rigorous approach ensures a **Zero-Compromise** firmware: 
-*   ✅ Working Audio & Voice Assistant
-*   ✅ Working Light Bar & Status LEDs
-*   ✅ Fully reproducible build environment
+## Audio chain
+
+```
+media_pipeline       -> resampler -> mixer input (media)        \
+                                                                 mixer -> MAX98357A
+announcement_pipeline -> resampler -> mixer input (announcement) /
+```
+
+Things that matter here:
+
+* Do not put LRCLK on GPIO46. It is a strapping pin with a weak internal
+  pull-down, and it corrupts the word select clock badly enough that the
+  MAX98357A amplifies garbage. The symptom is loud static that survives every
+  software change, including muting the digital stream. LRCLK is on GPIO5.
+* The mixer does not resample. Music Assistant streams arbitrary sample rates
+  (44.1kHz is common) into a 48kHz chain, so each source needs a resampler in
+  front of it. Removing them produces badly distorted audio.
+* `timeout: never` on the speaker and both mixer inputs. A finite timeout
+  releases the I2S bus between chunks, and reacquiring it clicks on every
+  playback edge.
+
+Music ducks 20dB while the assistant is speaking and is restored in `on_end`,
+once the assistant has fully stopped.
+
+## Volume
+
+Volume is controlled through the `media_out` entity, which is what Home
+Assistant, Music Assistant, voice intents and any physical buttons all talk to.
+Use `media_player.volume_up`, `volume_down` and `volume_set` for buttons.
+
+`volume_max` is a remap rather than a clamp. The reported volume still reads 0
+to 100%, but it is rescaled into `volume_min..volume_max` before reaching the
+speaker, so `volume_max` is the real output ceiling. It applies even to a volume
+restored from flash, which is why setting `volume_initial` on its own does
+nothing once the device has saved a volume.
+
+The i2s speaker maps volume onto a 100 entry logarithmic table where index 0 is
+silence and index 99 is 0dB. The bottom of the range is compressed, so small
+percentages are much quieter than they look.
+
+## LED driver split
+
+Enabling audio on the ESP32-S3 leaves only one RMT TX channel free, which is not
+enough to drive two WS2812 strips the usual way. So the two strips use different
+drivers:
+
+* Light bar (GPIO16): `esp32_rmt_led_strip` with DMA, using the one RMT channel.
+* Status LED (GPIO48): `single_ws2812`, a bit-bang driver in `SRC/` that uses no
+  RMT channel.
+
+## Notes
+
+Earlier versions of this project vendored esp-tflite-micro, esp-nn, esp-dsp,
+mdns and multipart-parser into `my_components/`, with patches and a two-pass
+PlatformIO build. None of that is needed now. Stock ESPHome declares those
+dependencies itself, pinned, and resolves them through the IDF component
+manager. If you disable `IDF_COMPONENT_MANAGER`, IDF ignores
+`src/idf_component.yml` and the build fails on missing headers.
