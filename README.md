@@ -65,7 +65,21 @@ nothing once the device has saved a volume.
 
 The i2s speaker maps volume onto a 100 entry logarithmic table where index 0 is
 silence and index 99 is 0dB. The bottom of the range is compressed, so small
-percentages are much quieter than they look.
+percentages are much quieter than they look. 50% is roughly -25dB, not half
+volume.
+
+`volume_max` is 100%, which is unity. There is no digital gain above it, so more
+output has to come from the MAX98357A GAIN pin: 100k to GND gives 15dB, tied to
+GND 12dB, floating 9dB (the default), tied to VDD 6dB, 100k to VDD 3dB.
+
+The Mute switch uses `media_player.mute` and `unmute` rather than setting a
+volume, so the level survives a mute and comes back on unmute. Do not put a
+`volume_set` there: the switch restores to OFF on boot, so its unmute action
+runs every boot and would pin the volume to whatever it named.
+
+For voice control ("set volume to 50%"), expose the `media_out` entity to Assist
+in Home Assistant and give the device an area. Without that, the intent has no
+target to resolve.
 
 ## LED driver split
 

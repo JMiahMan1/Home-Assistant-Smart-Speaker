@@ -477,11 +477,13 @@ switch:
       - lambda: id(va).set_use_wake_word(false);
       - lambda: |-
           id(mute_value) = true;
-      - media_player.volume_set: 0%
+      # Mute rather than volume_set: 0%, so the volume level survives and
+      # unmuting returns to it. Setting a volume here would overwrite it, and
+      # since this switch restores to OFF on boot, the unmute action runs on
+      # every boot and would pin the volume to whatever it named.
+      - media_player.mute:
     on_turn_off:
-      # Unmuting used to jump straight to full scale, overriding every other
-      # volume setting in the config.
-      - media_player.volume_set: 30%
+      - media_player.unmute:
       - lambda: |-
           id(mute_value) = false;
       - if:
@@ -740,11 +742,12 @@ media_player:
     # from flash (which is why volume_initial alone does nothing here).
     #
     # The i2s speaker maps volume onto a 100-entry logarithmic table where index
-    # 0 is silence and index 99 is 0dB, so this sits around -22dB and leaves the
-    # HA slider a usable range. It had to be held near 5% while LRCLK was on
-    # GPIO46; moving it to GPIO5 cleaned up the signal enough to raise it.
+    # 0 is silence and index 99 is 0dB, so 100% is unity and there is no digital
+    # gain available above it. More output than this needs the MAX98357A GAIN
+    # pin rewired. This had to be held near 5% while LRCLK was on GPIO46; moving
+    # it to GPIO5 cleaned up the signal enough to raise it.
     volume_initial: 50%
-    volume_max: 55%
+    volume_max: 100%
     # Step used by media_player.volume_up / volume_down, which is what Home
     # Assistant, voice intents ("turn it down") and physical buttons all call.
     volume_increment: 5%
